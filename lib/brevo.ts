@@ -1,4 +1,4 @@
-import { env } from './config';
+import { getEmailConfig } from './config';
 
 type SendArgs = {
   to: string;
@@ -9,9 +9,13 @@ type SendArgs = {
 };
 
 export async function sendMail({ to, subject, html, text, files }: SendArgs) {
-  const e = env();
+  const config = getEmailConfig();
+
   const payload: Record<string, unknown> = {
-    sender: { name: e.BREVO_SENDER_NAME, email: e.BREVO_SENDER_EMAIL },
+    sender: {
+      name: config.BREVO_SENDER_NAME,
+      email: config.BREVO_SENDER_EMAIL,
+    },
     to: [{ email: to }],
     subject,
     htmlContent: html,
@@ -19,10 +23,10 @@ export async function sendMail({ to, subject, html, text, files }: SendArgs) {
     tags: ['multiapply'],
   };
 
-  if (e.BREVO_REPLY_TO_EMAIL) {
+  if (config.BREVO_REPLY_TO_EMAIL) {
     payload.replyTo = {
-      email: e.BREVO_REPLY_TO_EMAIL,
-      name: e.BREVO_REPLY_TO_NAME || undefined,
+      email: config.BREVO_REPLY_TO_EMAIL,
+      name: config.BREVO_REPLY_TO_NAME,
     };
   }
 
@@ -35,20 +39,20 @@ export async function sendMail({ to, subject, html, text, files }: SendArgs) {
 
   let lastError = 'Brevo request failed';
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: {
         accept: 'application/json',
         'content-type': 'application/json',
-        'api-key': e.BREVO_API_KEY,
+        'api-key': config.BREVO_API_KEY,
       },
       body: JSON.stringify(payload),
       cache: 'no-store',
     });
 
     if (response.ok) {
-      const result = await response.json() as { messageId?: string };
+      const result = (await response.json()) as { messageId?: string };
       return { messageId: result.messageId || null };
     }
 
@@ -58,13 +62,14 @@ export async function sendMail({ to, subject, html, text, files }: SendArgs) {
       detail = body?.message || body?.code || '';
     } catch {}
 
-    lastError = 'Brevo ' + response.status + (detail ? ': ' + detail : '');
+    lastError = `Brevo ${response.status}${detail ? `: ${detail}` : ''}`;
 
-    // Retry rate limits and temporary provider/server failures.
     if (response.status !== 429 && response.status < 500) break;
 
     if (attempt < 2) {
-      await new Promise((resolve) => setTimeout(resolve, 500 * Math.pow(2, attempt)));
+      await new Promise((resolve) =>
+        setTimeout(resolve, 500 * 2 ** attempt),
+      );
     }
   }
 
