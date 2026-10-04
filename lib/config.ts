@@ -1,8 +1,4 @@
-type AppConfig = {
-  ADMIN_EMAIL: string;
-  ADMIN_PASSWORD: string;
-  SESSION_SECRET: string;
-  NEXT_PUBLIC_APP_URL: string;
+type EmailConfig = {
   BREVO_API_KEY: string;
   BREVO_SENDER_EMAIL: string;
   BREVO_SENDER_NAME: string;
@@ -11,8 +7,6 @@ type AppConfig = {
   EMAIL_DELAY_MS: number;
   MAX_RECIPIENTS_PER_CAMPAIGN: number;
   MAX_ATTACHMENT_SIZE_MB: number;
-  SUPABASE_URL?: string;
-  SUPABASE_SERVICE_ROLE_KEY?: string;
 };
 
 function required(name: string): string {
@@ -21,16 +15,20 @@ function required(name: string): string {
   return value;
 }
 
-function email(name: string): string {
-  const value = required(name);
+function optional(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value || undefined;
+}
+
+function validEmail(value: string, name: string): string {
   if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value)) {
     throw new Error(`Invalid email environment variable: ${name}`);
   }
   return value;
 }
 
-function integer(name: string, fallback: number, min: number, max: number): number {
-  const raw = process.env[name]?.trim();
+function numberEnv(name: string, fallback: number, min: number, max: number) {
+  const raw = optional(name);
   if (!raw) return fallback;
   const value = Number(raw);
   if (!Number.isInteger(value) || value < min || value > max) {
@@ -39,52 +37,43 @@ function integer(name: string, fallback: number, min: number, max: number): numb
   return value;
 }
 
-export function authEnv() {
-  return {
-    ADMIN_EMAIL: email('ADMIN_EMAIL'),
-    ADMIN_PASSWORD: required('ADMIN_PASSWORD'),
-    SESSION_SECRET: required('SESSION_SECRET'),
-  };
+export function getAuthConfig() {
+  const email = validEmail(required('ADMIN_EMAIL').toLowerCase(), 'ADMIN_EMAIL');
+  const password = required('ADMIN_PASSWORD');
+  const secret = required('SESSION_SECRET');
+
+  if (password.length < 8) {
+    throw new Error('ADMIN_PASSWORD must be at least 8 characters');
+  }
+  if (secret.length < 32) {
+    throw new Error('SESSION_SECRET must be at least 32 characters');
+  }
+
+  return { email, password, secret };
 }
 
-export function emailEnv() {
+export function getEmailConfig(): EmailConfig {
   return {
-    NEXT_PUBLIC_APP_URL:
-      process.env.NEXT_PUBLIC_APP_URL?.trim() || 'http://localhost:3000',
     BREVO_API_KEY: required('BREVO_API_KEY'),
-    BREVO_SENDER_EMAIL: email('BREVO_SENDER_EMAIL'),
-    BREVO_SENDER_NAME:
-      process.env.BREVO_SENDER_NAME?.trim() || 'MultiApply',
-    BREVO_REPLY_TO_EMAIL: process.env.BREVO_REPLY_TO_EMAIL?.trim() || undefined,
-    BREVO_REPLY_TO_NAME: process.env.BREVO_REPLY_TO_NAME?.trim() || undefined,
-    EMAIL_DELAY_MS: integer('EMAIL_DELAY_MS', 500, 0, 10000),
-    MAX_RECIPIENTS_PER_CAMPAIGN: integer(
-      'MAX_RECIPIENTS_PER_CAMPAIGN',
-      50,
-      1,
-      200,
+    BREVO_SENDER_EMAIL: validEmail(
+      required('BREVO_SENDER_EMAIL'),
+      'BREVO_SENDER_EMAIL',
     ),
-    MAX_ATTACHMENT_SIZE_MB: integer(
+    BREVO_SENDER_NAME: optional('BREVO_SENDER_NAME') || 'MultiApply',
+    BREVO_REPLY_TO_EMAIL: optional('BREVO_REPLY_TO_EMAIL'),
+    BREVO_REPLY_TO_NAME: optional('BREVO_REPLY_TO_NAME'),
+    EMAIL_DELAY_MS: numberEnv('EMAIL_DELAY_MS', 500, 0, 10000),
+    MAX_RECIPIENTS_PER_CAMPAIGN: numberEnv(
+      'MAX_RECIPIENTS_PER_CAMPAIGN',
+      20,
+      1,
+      50,
+    ),
+    MAX_ATTACHMENT_SIZE_MB: numberEnv(
       'MAX_ATTACHMENT_SIZE_MB',
       10,
       1,
       25,
     ),
-  };
-}
-
-export function storageEnv() {
-  return {
-    SUPABASE_URL: process.env.SUPABASE_URL?.trim() || undefined,
-    SUPABASE_SERVICE_ROLE_KEY:
-      process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || undefined,
-  };
-}
-
-export function env(): AppConfig {
-  return {
-    ...authEnv(),
-    ...emailEnv(),
-    ...storageEnv(),
   };
 }
