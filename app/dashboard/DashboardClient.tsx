@@ -71,7 +71,7 @@ export default function Dashboard() {
 
     async function loadDefaultResume() {
       try {
-        const response = await fetch('/resume/Satyendra_Kumar_Namdeo_Resume.pdf', {
+        const response = await fetch('/api/resume', {
           cache: 'no-store',
           credentials: 'same-origin',
         });
