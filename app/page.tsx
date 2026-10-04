@@ -9,25 +9,33 @@ export default async function Home({
 }) {
   if (await getSession()) redirect('/dashboard');
 
-  const e = authEnv();
+  let auth: ReturnType<typeof authEnv> | null = null;
+  let setupError = false;
+
+  try {
+    auth = authEnv();
+  } catch {
+    setupError = true;
+  }
+
   const params = await searchParams;
 
   async function login(formData: FormData) {
     'use server';
 
+    const authConfig = authEnv();
     const email = String(formData.get('email') || '').trim().toLowerCase();
     const password = String(formData.get('password') || '');
-    const auth = authEnv();
 
     if (
-      email !== auth.ADMIN_EMAIL.toLowerCase() ||
-      password !== auth.ADMIN_PASSWORD
+      email !== authConfig.ADMIN_EMAIL.toLowerCase() ||
+      password !== authConfig.ADMIN_PASSWORD
     ) {
       redirect('/?error=1');
     }
 
     await setSession({
-      email: auth.ADMIN_EMAIL,
+      email: authConfig.ADMIN_EMAIL,
       name: process.env.BREVO_SENDER_NAME || 'MultiApply',
       authenticated: true,
     });
@@ -36,62 +44,59 @@ export default async function Home({
   }
 
   return (
-    <main className="shell">
-      <div className="container login-container">
-        <section className="hero">
+    <main className="shell login-shell">
+      <div className="login-container">
+        <section className="login-hero">
           <div className="brand">Multi<span>Apply</span></div>
-          <h1>
-            Send individual emails.
-            <br />
-            From any device.
-          </h1>
+          <span className="eyebrow">QA APPLICATION MAILER</span>
+          <h1>Apply faster.<br />One message at a time.</h1>
           <p>
-            Login once, paste your recipients, add your message and attachments,
-            then send each recipient a separate email.
+            Prepare your application once, attach your resume, paste recruiter
+            addresses and send each message individually.
           </p>
         </section>
 
-        <form className="card stack login-card" action={login}>
-          <div>
-            <label className="label" htmlFor="email">Email</label>
-            <input
-              className="input"
-              id="email"
-              name="email"
-              type="email"
-              required
-              autoComplete="username"
-              defaultValue={e.ADMIN_EMAIL}
-            />
-          </div>
-
-          <div>
-            <label className="label" htmlFor="password">Password</label>
-            <input
-              className="input"
-              id="password"
-              name="password"
-              type="password"
-              required
-              autoComplete="current-password"
-              autoFocus
-              placeholder="Enter your MultiApply password"
-            />
-          </div>
-
-          {params.error ? (
-            <p className="error">Incorrect email or password.</p>
-          ) : null}
-
-          <button className="btn primary" type="submit">
-            Login &amp; Start
-          </button>
-
-          <p className="muted small">
-            You only need to login once per browser session. Your Brevo API key
-            stays on the server.
-          </p>
-        </form>
+        {setupError ? (
+          <section className="card setup-card">
+            <h2>Almost ready</h2>
+            <p className="muted">
+              Vercel is missing one or more login environment variables.
+              Add ADMIN_EMAIL, ADMIN_PASSWORD and SESSION_SECRET, then redeploy.
+            </p>
+          </section>
+        ) : (
+          <form className="card stack login-card" action={login}>
+            <div>
+              <label className="label" htmlFor="email">Login email</label>
+              <input
+                className="input"
+                id="email"
+                name="email"
+                type="email"
+                required
+                autoComplete="username"
+                defaultValue={auth?.ADMIN_EMAIL || ''}
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="password">Password</label>
+              <input
+                className="input"
+                id="password"
+                name="password"
+                type="password"
+                required
+                autoComplete="current-password"
+                autoFocus
+                placeholder="Enter your MultiApply password"
+              />
+            </div>
+            {params.error ? <p className="error">Incorrect email or password.</p> : null}
+            <button className="btn primary login-submit" type="submit">
+              Login &amp; Start
+            </button>
+          </form>
+        )}
       </div>
     </main>
   );
