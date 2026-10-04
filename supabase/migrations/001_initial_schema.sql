@@ -1,0 +1,5 @@
+create extension if not exists pgcrypto;
+create table if not exists email_jobs(id uuid primary key default gen_random_uuid(),sender_email text not null,subject text not null,status text not null default 'sending',total_recipients int not null,successful_count int not null default 0,failed_count int not null default 0,created_at timestamptz not null default now(),completed_at timestamptz);
+create table if not exists email_recipients(id uuid primary key default gen_random_uuid(),job_id uuid not null references email_jobs(id) on delete cascade,email text not null,status text not null default 'pending',error_message text,sent_at timestamptz);
+create index if not exists email_jobs_sender_created_idx on email_jobs(sender_email,created_at desc);
+create index if not exists email_recipients_job_idx on email_recipients(job_id);
