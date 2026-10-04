@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto';
+
 type Campaign = {
   id: string;
   senderEmail: string;
@@ -20,7 +22,7 @@ export async function createCampaign(
   subject: string,
   recipients: string[],
 ) {
-  const id = crypto.randomUUID();
+  const id = randomUUID();
 
   campaigns.set(id, {
     id,
