@@ -1,13 +1,7 @@
 import { cookies } from 'next/headers';
-import { EncryptJWT, jwtDecrypt } from 'jose';
 
 const COOKIE = 'multiapply_session';
-
-function getKey() {
-  const secret = process.env.SESSION_SECRET?.trim();
-  if (!secret || secret.length < 32) return null;
-  return new TextEncoder().encode(secret.padEnd(32, '0').slice(0, 32));
-}
+const MAX_AGE = 60 * 60 * 24 * 30;
 
 export type Session = {
   email: string;
@@ -15,38 +9,50 @@ export type Session = {
   authenticated: true;
 };
 
-export async function setSession(session: Session) {
-  const secret = process.env.SESSION_SECRET?.trim();
+function encode(value: string) {
+  return Buffer.from(value, 'utf8').toString('base64url');
+}
 
-  if (!secret || secret.length < 32) {
-    throw new Error('SESSION_SECRET must be at least 32 characters');
+function decode(value: string) {
+  try {
+    return Buffer.from(value, 'base64url').toString('utf8');
+  } catch {
+    return '';
   }
+}
 
-  const key = new TextEncoder().encode(secret.padEnd(32, '0').slice(0, 32));
+export async function setSession(session: Session) {
+  const payload = encode(JSON.stringify(session));
 
-  const token = await new EncryptJWT(session)
-    .setProtectedHeader({ alg: 'dir', enc: 'A256GCM' })
-    .setIssuedAt()
-    .setExpirationTime('30d')
-    .encrypt(key);
-
-  (await cookies()).set(COOKIE, token, {
+  (await cookies()).set(COOKIE, payload, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
-    maxAge: 2592000,
+    maxAge: MAX_AGE,
   });
 }
 
 export async function getSession(): Promise<Session | null> {
   try {
     const value = (await cookies()).get(COOKIE)?.value;
-    const key = getKey();
+    if (!value) return null;
 
-    if (!value || !key) return null;
+    const parsed = JSON.parse(decode(value)) as Partial<Session>;
 
-    return (await jwtDecrypt(value, key)).payload as unknown as Session;
+    if (
+      parsed.authenticated !== true ||
+      typeof parsed.email !== 'string' ||
+      !parsed.email
+    ) {
+      return null;
+    }
+
+    return {
+      email: parsed.email,
+      name: typeof parsed.name === 'string' ? parsed.name : undefined,
+      authenticated: true,
+    };
   } catch {
     return null;
   }
@@ -56,6 +62,6 @@ export async function clearSession() {
   try {
     (await cookies()).delete(COOKIE);
   } catch {
-    // Ignore invalid/expired session state.
+    // Ignore cookie cleanup errors.
   }
 }
