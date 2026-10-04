@@ -1,7 +1,18 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
-import Compose from '@/components/Compose';
+
+const Compose = dynamic(() => import('@/components/Compose'), {
+  ssr: false,
+  loading: () => (
+    <div className="card stack" aria-busy="true">
+      <span className="eyebrow">COMPOSER</span>
+      <h2>Preparing your application form…</h2>
+      <p className="muted">Loading the email workspace securely.</p>
+    </div>
+  ),
+});
 
 type Session = {
   email: string;
@@ -14,31 +25,48 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
 
-    fetch('/api/auth/session', { cache: 'no-store' })
-      .then(async (response) => {
-        if (!response.ok) throw new Error('unauthorized');
-        return response.json();
-      })
-      .then((data) => {
-        if (active) setSession(data.session || null);
-      })
-      .catch(() => {
-        if (active) window.location.replace('/');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    async function loadSession() {
+      try {
+        const response = await fetch('/api/auth/session', {
+          cache: 'no-store',
+          credentials: 'same-origin',
+          signal: controller.signal,
+        });
 
-    return () => {
-      active = false;
-    };
+        if (!response.ok) {
+          window.location.replace('/');
+          return;
+        }
+
+        const data = (await response.json()) as { session?: Session };
+
+        if (data.session?.authenticated === true && data.session.email) {
+          setSession(data.session);
+          return;
+        }
+
+        window.location.replace('/');
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        window.location.replace('/');
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+
+    void loadSession();
+
+    return () => controller.abort();
   }, []);
 
   async function logout() {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
     } finally {
       window.location.replace('/');
     }
@@ -63,7 +91,9 @@ export default function Dashboard() {
   return (
     <main className="shell dashboard-shell">
       <nav className="nav">
-        <div className="brand">Multi<span>Apply</span></div>
+        <div className="brand">
+          Multi<span>Apply</span>
+        </div>
         <div className="account-bar">
           <span className="account-email">{session.email}</span>
           <button className="btn logout-btn" type="button" onClick={logout}>
