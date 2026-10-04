@@ -1,1 +1,0 @@
-import {NextResponse} from 'next/server';import {randomBytes} from 'crypto';import {authUrl} from '@/lib/google';export async function GET(){const state=randomBytes(24).toString('hex');const r=NextResponse.redirect(authUrl(state));r.cookies.set('oauth_state',state,{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'lax',path:'/',maxAge:600});return r;}
