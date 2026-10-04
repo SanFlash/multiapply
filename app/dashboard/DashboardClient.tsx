@@ -36,6 +36,13 @@ type Session = {
   authenticated: true;
 };
 
+type JobResult = {
+  email: string;
+  status: string;
+  messageId?: string;
+  error?: string;
+};
+
 type Job = {
   jobId: string;
   status: string;
@@ -43,6 +50,7 @@ type Job = {
   sent?: number;
   failed?: number;
   invalid?: string[];
+  results?: JobResult[];
 };
 
 export default function Dashboard() {
@@ -333,6 +341,15 @@ export default function Dashboard() {
                 {job.invalid?.length ? (
                   <p className="error">Invalid: {job.invalid.join(', ')}</p>
                 ) : null}
+                {job.results?.filter((result) => result.status === 'failed').map((result) => (
+                  <div className="error" key={result.email} style={{ marginTop: 8 }}>
+                    <strong>{result.email}</strong>
+                    <div>{result.error || 'Brevo rejected this email.'}</div>
+                  </div>
+                ))}
+                {job.results?.filter((result) => result.status === 'sent').map((result) => (
+                  <div key={result.email} style={{ marginTop: 8 }}>✓ {result.email}</div>
+                ))}
               </div>
             ) : null}
           </form>
