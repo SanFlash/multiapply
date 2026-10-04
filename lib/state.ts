@@ -1,0 +1,1 @@
+export const memoryJobs=new Map<string,{total:number;sent:number;failed:number;status:string;results:{email:string;status:string;error?:string}[]}>();
