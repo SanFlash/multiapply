@@ -1,47 +1,58 @@
 import { redirect } from 'next/navigation';
 import { getSession, setSession } from '@/lib/session';
-import { authEnv } from '@/lib/config';
+
+function readAuthConfig() {
+  const email = process.env.ADMIN_EMAIL?.trim();
+  const password = process.env.ADMIN_PASSWORD;
+  const secret = process.env.SESSION_SECRET?.trim();
+
+  if (!email || !password || password.length < 8 || !secret || secret.length < 32) {
+    return null;
+  }
+
+  return { email: email.toLowerCase(), password };
+}
 
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; setup?: string }>;
 }) {
   if (await getSession()) redirect('/dashboard');
 
-  let auth: ReturnType<typeof authEnv> | null = null;
-  let setupError = false;
-
-  try {
-    auth = authEnv();
-  } catch {
-    setupError = true;
-  }
-
+  const auth = readAuthConfig();
   const params = await searchParams;
 
   async function login(formData: FormData) {
     'use server';
 
-    const authConfig = authEnv();
+    const authConfig = readAuthConfig();
+
+    if (!authConfig) {
+      redirect('/?setup=1');
+    }
+
     const email = String(formData.get('email') || '').trim().toLowerCase();
     const password = String(formData.get('password') || '');
 
-    if (
-      email !== authConfig.ADMIN_EMAIL.toLowerCase() ||
-      password !== authConfig.ADMIN_PASSWORD
-    ) {
+    if (email !== authConfig.email || password !== authConfig.password) {
       redirect('/?error=1');
     }
 
-    await setSession({
-      email: authConfig.ADMIN_EMAIL,
-      name: process.env.BREVO_SENDER_NAME || 'MultiApply',
-      authenticated: true,
-    });
+    try {
+      await setSession({
+        email: authConfig.email,
+        name: process.env.BREVO_SENDER_NAME?.trim() || 'MultiApply',
+        authenticated: true,
+      });
+    } catch {
+      redirect('/?setup=1');
+    }
 
     redirect('/dashboard');
   }
+
+  const setupError = !auth || params.setup === '1';
 
   return (
     <main className="shell login-shell">
@@ -60,8 +71,13 @@ export default async function Home({
           <section className="card setup-card">
             <h2>Almost ready</h2>
             <p className="muted">
-              Vercel is missing one or more login environment variables.
-              Add ADMIN_EMAIL, ADMIN_PASSWORD and SESSION_SECRET, then redeploy.
+              Login configuration is incomplete. In Vercel, add ADMIN_EMAIL,
+              ADMIN_PASSWORD and a SESSION_SECRET with at least 32 characters,
+              then redeploy.
+            </p>
+            <p className="muted">
+              The page itself is working; this message means the server cannot
+              authenticate until those values are configured.
             </p>
           </section>
         ) : (
@@ -75,7 +91,7 @@ export default async function Home({
                 type="email"
                 required
                 autoComplete="username"
-                defaultValue={auth?.ADMIN_EMAIL || ''}
+                defaultValue={auth.email}
               />
             </div>
             <div>
