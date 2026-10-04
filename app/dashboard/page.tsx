@@ -5,10 +5,7 @@ import Compose from '@/components/Compose';
 
 export default async function Dashboard() {
   const s = await getSession();
-
-  if (!s) {
-    redirect('/');
-  }
+  if (!s) redirect('/');
 
   const h = await history(s.email);
 
@@ -19,62 +16,58 @@ export default async function Dashboard() {
   }
 
   return (
-    <main className="shell">
+    <main className="shell dashboard-shell">
       <nav className="nav">
-        <div className="brand">
-          Multi<span>Apply</span>
-        </div>
-
-        <div className="row">
-          <span className="muted">{s.email}</span>
+        <div className="brand">Multi<span>Apply</span></div>
+        <div className="account-bar">
+          <span className="account-email">{s.email}</span>
           <form action={logout}>
-            <button className="btn" type="submit">
-              Log out
-            </button>
+            <button className="btn logout-btn" type="submit">Log out</button>
           </form>
         </div>
       </nav>
 
-      <div className="container">
-        <div className="hero">
-          <h1>
-            Compose once.
-            <br />
-            Deliver individually.
-          </h1>
-          <p>
-            Brevo sends a separate message to each recipient. Attachments are
-            reused safely for every delivery.
-          </p>
+      <div className="container dashboard-container">
+        <section className="dashboard-hero">
+          <div>
+            <span className="eyebrow">APPLICATION WORKSPACE</span>
+            <h1>Send your QA application.</h1>
+            <p>Subject and message are ready. Add recruiters and your resume, then send individually.</p>
+          </div>
+          <div className="hero-badge">✓ Ready to send</div>
+        </section>
+
+        <div className="mobile-steps">
+          <span>1. Recipients</span><span>2. Resume</span><span>3. Send</span>
         </div>
 
-        <div className="grid">
-          <Compose />
+        <div className="dashboard-grid">
+          <section className="compose-panel">
+            <Compose />
+          </section>
 
-          <aside className="card">
-            <h2>Recent campaigns</h2>
-
+          <aside className="history-panel card">
+            <div className="history-heading">
+              <div>
+                <span className="eyebrow">HISTORY</span>
+                <h2>Recent campaigns</h2>
+              </div>
+              <span className="history-count">{h.length}</span>
+            </div>
             {h.length ? (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Subject</th>
-                    <th>Sent</th>
-                    <th>Failed</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {h.map((x: any) => (
-                    <tr key={x.id}>
-                      <td>{x.subject}</td>
-                      <td className="success">{x.successful_count || 0}</td>
-                      <td className="error">{x.failed_count || 0}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="history-list">
+                {h.map((x: any) => (
+                  <div className="history-item" key={x.id}>
+                    <div className="history-subject">{x.subject}</div>
+                    <div className="history-meta">
+                      <span className="success">✓ {x.successful_count || 0} sent</span>
+                      <span className="error">✕ {x.failed_count || 0} failed</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <div className="empty">No campaigns yet.</div>
+              <div className="empty">Your completed campaigns will appear here.</div>
             )}
           </aside>
         </div>
