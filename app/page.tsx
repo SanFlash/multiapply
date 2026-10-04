@@ -1,58 +1,47 @@
-import { redirect } from 'next/navigation';
-import { getSession, setSession } from '@/lib/session';
+'use client';
 
-function readAuthConfig() {
-  const email = process.env.ADMIN_EMAIL?.trim();
-  const password = process.env.ADMIN_PASSWORD;
-  const secret = process.env.SESSION_SECRET?.trim();
+import { FormEvent, useState } from 'react';
 
-  if (!email || !password || password.length < 8 || !secret || secret.length < 32) {
-    return null;
-  }
+export default function Home() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [setup, setSetup] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  return { email: email.toLowerCase(), password };
-}
-
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string; setup?: string }>;
-}) {
-  if (await getSession()) redirect('/dashboard');
-
-  const auth = readAuthConfig();
-  const params = await searchParams;
-
-  async function login(formData: FormData) {
-    'use server';
-
-    const authConfig = readAuthConfig();
-
-    if (!authConfig) {
-      redirect('/?setup=1');
-    }
-
-    const email = String(formData.get('email') || '').trim().toLowerCase();
-    const password = String(formData.get('password') || '');
-
-    if (email !== authConfig.email || password !== authConfig.password) {
-      redirect('/?error=1');
-    }
+  async function login(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    setError('');
+    setSetup(false);
 
     try {
-      await setSession({
-        email: authConfig.email,
-        name: process.env.BREVO_SENDER_NAME?.trim() || 'MultiApply',
-        authenticated: true,
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ email, password }),
       });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.status === 503) {
+        setSetup(true);
+        return;
+      }
+
+      if (!response.ok) {
+        setError(data.error || 'Incorrect email or password.');
+        return;
+      }
+
+      window.location.replace('/dashboard');
     } catch {
-      redirect('/?setup=1');
+      setError('Unable to reach the login service. Please try again.');
+    } finally {
+      setLoading(false);
     }
-
-    redirect('/dashboard');
   }
-
-  const setupError = !auth || params.setup === '1';
 
   return (
     <main className="shell login-shell">
@@ -67,7 +56,7 @@ export default async function Home({
           </p>
         </section>
 
-        {setupError ? (
+        {setup ? (
           <section className="card setup-card">
             <h2>Almost ready</h2>
             <p className="muted">
@@ -75,13 +64,9 @@ export default async function Home({
               ADMIN_PASSWORD and a SESSION_SECRET with at least 32 characters,
               then redeploy.
             </p>
-            <p className="muted">
-              The page itself is working; this message means the server cannot
-              authenticate until those values are configured.
-            </p>
           </section>
         ) : (
-          <form className="card stack login-card" action={login}>
+          <form className="card stack login-card" onSubmit={login}>
             <div>
               <label className="label" htmlFor="email">Login email</label>
               <input
@@ -91,7 +76,8 @@ export default async function Home({
                 type="email"
                 required
                 autoComplete="username"
-                defaultValue={auth.email}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
               />
             </div>
             <div>
@@ -105,11 +91,13 @@ export default async function Home({
                 autoComplete="current-password"
                 autoFocus
                 placeholder="Enter your MultiApply password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
               />
             </div>
-            {params.error ? <p className="error">Incorrect email or password.</p> : null}
-            <button className="btn primary login-submit" type="submit">
-              Login &amp; Start
+            {error ? <p className="error">{error}</p> : null}
+            <button className="btn primary login-submit" type="submit" disabled={loading}>
+              {loading ? 'Signing in…' : 'Login & Start'}
             </button>
           </form>
         )}
