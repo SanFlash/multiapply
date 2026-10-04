@@ -1,11 +1,10 @@
 import { cookies } from 'next/headers';
 import { EncryptJWT, jwtDecrypt } from 'jose';
-import { authEnv } from './config';
 
 const COOKIE = 'multiapply_session';
 
 function getKey() {
-  const secret = process.env.SESSION_SECRET;
+  const secret = process.env.SESSION_SECRET?.trim();
   if (!secret || secret.length < 32) return null;
   return new TextEncoder().encode(secret.padEnd(32, '0').slice(0, 32));
 }
@@ -17,10 +16,13 @@ export type Session = {
 };
 
 export async function setSession(session: Session) {
-  const auth = authEnv();
-  const key = new TextEncoder().encode(
-    auth.SESSION_SECRET.padEnd(32, '0').slice(0, 32),
-  );
+  const secret = process.env.SESSION_SECRET?.trim();
+
+  if (!secret || secret.length < 32) {
+    throw new Error('SESSION_SECRET must be at least 32 characters');
+  }
+
+  const key = new TextEncoder().encode(secret.padEnd(32, '0').slice(0, 32));
 
   const token = await new EncryptJWT(session)
     .setProtectedHeader({ alg: 'dir', enc: 'A256GCM' })
@@ -38,12 +40,12 @@ export async function setSession(session: Session) {
 }
 
 export async function getSession(): Promise<Session | null> {
-  const value = (await cookies()).get(COOKIE)?.value;
-  const key = getKey();
-
-  if (!value || !key) return null;
-
   try {
+    const value = (await cookies()).get(COOKIE)?.value;
+    const key = getKey();
+
+    if (!value || !key) return null;
+
     return (await jwtDecrypt(value, key)).payload as unknown as Session;
   } catch {
     return null;
@@ -51,5 +53,9 @@ export async function getSession(): Promise<Session | null> {
 }
 
 export async function clearSession() {
-  (await cookies()).delete(COOKIE);
+  try {
+    (await cookies()).delete(COOKIE);
+  } catch {
+    // Ignore invalid/expired session state.
+  }
 }
