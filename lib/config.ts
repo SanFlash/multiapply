@@ -13,11 +13,14 @@ const emailSchema = z.object({
   BREVO_SENDER_NAME: z.string().min(1).default('MultiApply'),
   BREVO_REPLY_TO_EMAIL: z.string().email().optional(),
   BREVO_REPLY_TO_NAME: z.string().optional(),
-  SUPABASE_URL: z.string().url().optional(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   EMAIL_DELAY_MS: z.coerce.number().int().min(0).max(10000).default(500),
   MAX_RECIPIENTS_PER_CAMPAIGN: z.coerce.number().int().min(1).max(200).default(50),
   MAX_ATTACHMENT_SIZE_MB: z.coerce.number().min(1).max(25).default(10),
+});
+
+const storageSchema = z.object({
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
 });
 
 export function authEnv() {
@@ -28,10 +31,10 @@ export function emailEnv() {
   return emailSchema.parse(process.env);
 }
 
-// Backward-compatible helper for server code that needs the complete configuration.
+export function storageEnv() {
+  return storageSchema.parse(process.env);
+}
+
 export function env() {
-  return {
-    ...authEnv(),
-    ...emailEnv(),
-  };
+  return { ...authEnv(), ...emailEnv(), ...storageEnv() };
 }
