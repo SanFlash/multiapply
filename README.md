@@ -123,6 +123,22 @@ Start with one email address that you control.
 
 Then test several recipients. MultiApply sends a separate Brevo API request for each recipient, so the recipient list is never put into CC/BCC.
 
+## 5A. Default resume
+
+MultiApply has a dedicated `resume/` folder for the default job-application resume.
+
+Expected file:
+
+```
+resume/Satyendra_Kumar_Namdeo_Resume.pdf
+```
+
+When the dashboard opens, MultiApply automatically loads this PDF and marks it as the selected attachment. You do **not** need to open the browser's file picker for the normal application flow.
+
+If the PDF is temporarily missing from the repository, the dashboard uses its built-in resume fallback so sending remains available. To replace the default resume permanently, put the new PDF in the `resume/` folder using the exact filename above and deploy the latest commit.
+
+The **Replace** button remains available when you intentionally want to send a different resume for a particular application.
+
 ## 6. Attachments
 
 Attachments are converted to base64 on the server and sent to Brevo.
