@@ -1,0 +1,5 @@
+import {google} from 'googleapis';import {env} from './config';
+export function oauth(){const e=env();return new google.auth.OAuth2(e.GOOGLE_CLIENT_ID,e.GOOGLE_CLIENT_SECRET,e.GOOGLE_REDIRECT_URI);}
+export function authUrl(state:string){return oauth().generateAuthUrl({access_type:'offline',prompt:'consent',scope:['openid','email','profile','https://www.googleapis.com/auth/gmail.send'],state});}
+export async function exchange(code:string){const o=oauth();const{tokens}=await o.getToken(code);o.setCredentials(tokens);const profile=await google.oauth2({version:'v2',auth:o}).userinfo.get();return{tokens,email:profile.data.email!,name:profile.data.name||undefined};}
+export async function refreshAccess(refreshToken:string){const o=oauth();o.setCredentials({refresh_token:refreshToken});const{credentials}=await o.refreshAccessToken();return credentials.access_token!;}
