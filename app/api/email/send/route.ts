@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
-import { getSession } from '@/lib/session';
+import { getSessionFromRequest } from '@/lib/session';
 import { parseRecipients } from '@/lib/recipients';
 import { memoryJobs } from '@/lib/state';
 
