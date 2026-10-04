@@ -41,6 +41,9 @@ type JobResult = {
   status: string;
   messageId?: string;
   error?: string;
+  deliveryStatus?: string;
+  deliveryLabel?: string;
+  deliveryReason?: string | null;
 };
 
 type Job = {
@@ -178,7 +181,53 @@ export default function Dashboard() {
         throw new Error(data.error || 'Unable to send campaign');
       }
 
-      setJob(data);
+      let current: Job = data;
+      setJob(current);
+
+      const pending = () =>
+        current.results?.filter(
+          (result) => result.status === 'sent' && result.messageId && result.deliveryStatus !== 'delivered',
+        ) || [];
+
+      // Brevo accepts the API request before the recipient mailbox is actually reached.
+      // Poll its event report so the UI shows the real delivery outcome.
+      for (let attempt = 0; attempt < 8 && pending().length; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 1500 : 2500));
+
+        const updatedResults = await Promise.all(
+          (current.results || []).map(async (result) => {
+            if (result.status !== 'sent' || !result.messageId) return result;
+
+            try {
+              const statusResponse = await fetch(
+                '/api/email/status?messageId=' + encodeURIComponent(result.messageId),
+                { cache: 'no-store', credentials: 'same-origin' },
+              );
+              const status = await statusResponse.json();
+
+              if (!statusResponse.ok) {
+                return { ...result, deliveryStatus: 'status_error', deliveryLabel: 'Status check failed', deliveryReason: status.error };
+              }
+
+              return {
+                ...result,
+                deliveryStatus: status.status,
+                deliveryLabel: status.label,
+                deliveryReason: status.reason,
+              };
+            } catch {
+              return { ...result, deliveryStatus: 'status_error', deliveryLabel: 'Status check failed' };
+            }
+          }),
+        );
+
+        current = { ...current, results: updatedResults };
+        setJob(current);
+
+        if (!pending().some((result) => result.deliveryStatus !== 'delivered' && result.deliveryStatus !== 'accepted')) {
+          break;
+        }
+      }
     } catch (value) {
       setError(value instanceof Error ? value.message : 'Unable to send campaign');
     } finally {
@@ -341,14 +390,21 @@ export default function Dashboard() {
                 {job.invalid?.length ? (
                   <p className="error">Invalid: {job.invalid.join(', ')}</p>
                 ) : null}
-                {job.results?.filter((result) => result.status === 'failed').map((result) => (
-                  <div className="error" key={result.email} style={{ marginTop: 8 }}>
+                {job.results?.map((result) => (
+                  <div
+                    key={result.email}
+                    className={result.status === 'failed' || ['hard_bounce', 'soft_bounce', 'blocked', 'spam', 'invalid_email', 'error'].includes(result.deliveryStatus || '') ? 'error' : ''}
+                    style={{ marginTop: 8 }}
+                  >
                     <strong>{result.email}</strong>
-                    <div>{result.error || 'Brevo rejected this email.'}</div>
+                    <div>
+                      {result.status === 'failed'
+                        ? result.error || 'Brevo rejected this email.'
+                        : result.deliveryLabel || 'Accepted by Brevo — waiting for delivery confirmation…'}
+                    </div>
+                    {result.deliveryReason ? <div className="muted small">{result.deliveryReason}</div> : null}
+                    {result.messageId ? <div className="muted small">Message ID: {result.messageId}</div> : null}
                   </div>
-                ))}
-                {job.results?.filter((result) => result.status === 'sent').map((result) => (
-                  <div key={result.email} style={{ marginTop: 8 }}>✓ {result.email}</div>
                 ))}
               </div>
             ) : null}
