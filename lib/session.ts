@@ -1,8 +1,7 @@
-import { cookies } from 'next/headers';
 import { createHmac, timingSafeEqual } from 'crypto';
 
-const COOKIE = 'multiapply_session';
-const MAX_AGE = 60 * 60 * 24 * 30;
+export const SESSION_COOKIE = 'multiapply_session';
+export const SESSION_MAX_AGE = 60 * 60 * 24 * 30;
 
 export type Session = {
   email: string;
@@ -30,14 +29,21 @@ function sign(payload: string) {
   return createHmac('sha256', getSecret()).update(payload).digest('base64url');
 }
 
-function createToken(session: Session) {
+export function createSessionToken(session: Session) {
+  const secret = getSecret();
+  if (secret.length < 32) {
+    throw new Error('SESSION_SECRET must be at least 32 characters');
+  }
+
   const payload = encode(JSON.stringify(session));
   return payload + '.' + sign(payload);
 }
 
-function readToken(token: string): Session | null {
+export function readSessionToken(token: string | undefined | null): Session | null {
+  if (!token || !getSecret()) return null;
+
   const separator = token.lastIndexOf('.');
-  if (separator <= 0 || !getSecret()) return null;
+  if (separator <= 0) return null;
 
   const payload = token.slice(0, separator);
   const signature = token.slice(separator + 1);
@@ -46,10 +52,17 @@ function readToken(token: string): Session | null {
   const a = Buffer.from(signature);
   const b = Buffer.from(expected);
 
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  if (a.length !== b.length) return null;
+
+  try {
+    if (!timingSafeEqual(a, b)) return null;
+  } catch {
+    return null;
+  }
 
   try {
     const parsed = JSON.parse(decode(payload)) as Partial<Session>;
+
     if (
       parsed.authenticated !== true ||
       typeof parsed.email !== 'string' ||
@@ -68,32 +81,12 @@ function readToken(token: string): Session | null {
   }
 }
 
-export async function setSession(session: Session) {
-  const secret = getSecret();
-  if (secret.length < 32) {
-    throw new Error('SESSION_SECRET must be at least 32 characters');
-  }
-
-  (await cookies()).set(COOKIE, createToken(session), {
+export function sessionCookieOptions() {
+  return {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: 'lax' as const,
     path: '/',
-    maxAge: MAX_AGE,
-  });
-}
-
-export async function getSession() {
-  try {
-    const token = (await cookies()).get(COOKIE)?.value;
-    return token ? readToken(token) : null;
-  } catch {
-    return null;
-  }
-}
-
-export async function clearSession() {
-  try {
-    (await cookies()).delete(COOKIE);
-  } catch {}
+    maxAge: SESSION_MAX_AGE,
+  };
 }
