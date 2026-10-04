@@ -1,13 +1,12 @@
 import { redirect } from 'next/navigation';
 import { getSession, clearSession } from '@/lib/session';
-import { history } from '@/lib/store';
 import Compose from '@/components/Compose';
+
+export const dynamic = 'force-dynamic';
 
 export default async function Dashboard() {
   const s = await getSession();
   if (!s) redirect('/');
-
-  const h = await history(s.email);
 
   async function logout() {
     'use server';
@@ -38,7 +37,9 @@ export default async function Dashboard() {
         </section>
 
         <div className="mobile-steps">
-          <span>1. Recipients</span><span>2. Resume</span><span>3. Send</span>
+          <span>1. Recipients</span>
+          <span>2. Resume</span>
+          <span>3. Send</span>
         </div>
 
         <div className="dashboard-grid">
@@ -52,23 +53,11 @@ export default async function Dashboard() {
                 <span className="eyebrow">HISTORY</span>
                 <h2>Recent campaigns</h2>
               </div>
-              <span className="history-count">{h.length}</span>
+              <span className="history-count">0</span>
             </div>
-            {h.length ? (
-              <div className="history-list">
-                {h.map((x: any) => (
-                  <div className="history-item" key={x.id}>
-                    <div className="history-subject">{x.subject}</div>
-                    <div className="history-meta">
-                      <span className="success">✓ {x.successful_count || 0} sent</span>
-                      <span className="error">✕ {x.failed_count || 0} failed</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="empty">Your completed campaigns will appear here.</div>
-            )}
+            <div className="empty">
+              Campaign history will be available once optional database storage is configured.
+            </div>
           </aside>
         </div>
       </div>
