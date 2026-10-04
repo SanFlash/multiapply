@@ -1,18 +1,7 @@
 'use client';
 
-import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
-
-const Compose = dynamic(() => import('@/components/Compose'), {
-  ssr: false,
-  loading: () => (
-    <div className="card stack" aria-busy="true">
-      <span className="eyebrow">COMPOSER</span>
-      <h2>Preparing your application form…</h2>
-      <p className="muted">Loading the email workspace securely.</p>
-    </div>
-  ),
-});
+import Compose from '@/components/Compose';
 
 type Session = {
   email: string;
@@ -22,65 +11,59 @@ type Session = {
 
 export default function Dashboard() {
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    const controller = new AbortController();
+    let active = true;
 
-    async function loadSession() {
-      try {
-        const response = await fetch('/api/auth/session', {
-          cache: 'no-store',
-          credentials: 'same-origin',
-          signal: controller.signal,
-        });
-
+    fetch('/api/auth/session', {
+      cache: 'no-store',
+      credentials: 'same-origin',
+    })
+      .then(async (response) => {
         if (!response.ok) {
           window.location.replace('/');
           return;
         }
 
-        const data = (await response.json()) as { session?: Session };
+        const data = await response.json();
 
-        if (data.session?.authenticated === true && data.session.email) {
+        if (active && data.session?.authenticated === true) {
           setSession(data.session);
-          return;
+        } else if (active) {
+          window.location.replace('/');
         }
+      })
+      .catch(() => {
+        if (active) window.location.replace('/');
+      })
+      .finally(() => {
+        if (active) setChecking(false);
+      });
 
-        window.location.replace('/');
-      } catch (error) {
-        if (error instanceof DOMException && error.name === 'AbortError') return;
-        window.location.replace('/');
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
-      }
-    }
-
-    void loadSession();
-
-    return () => controller.abort();
+    return () => {
+      active = false;
+    };
   }, []);
 
   async function logout() {
-    try {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'same-origin',
-      });
-    } finally {
-      window.location.replace('/');
-    }
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+    }).catch(() => undefined);
+
+    window.location.replace('/');
   }
 
-  if (loading) {
+  if (checking) {
     return (
       <main className="shell dashboard-shell">
         <div className="container dashboard-container">
-          <div className="card" style={{ marginTop: 40 }}>
+          <section className="card" style={{ marginTop: 40 }}>
             <span className="eyebrow">MULTIAPPLY</span>
             <h2>Loading workspace…</h2>
             <p className="muted">Checking your secure session.</p>
-          </div>
+          </section>
         </div>
       </main>
     );
@@ -91,9 +74,7 @@ export default function Dashboard() {
   return (
     <main className="shell dashboard-shell">
       <nav className="nav">
-        <div className="brand">
-          Multi<span>Apply</span>
-        </div>
+        <div className="brand">Multi<span>Apply</span></div>
         <div className="account-bar">
           <span className="account-email">{session.email}</span>
           <button className="btn logout-btn" type="button" onClick={logout}>
@@ -108,8 +89,8 @@ export default function Dashboard() {
             <span className="eyebrow">APPLICATION WORKSPACE</span>
             <h1>Send your QA application.</h1>
             <p>
-              Subject and message are ready. Add recruiters and your resume,
-              then send individually.
+              Add recruiter addresses, review your message, attach your resume,
+              and send each application individually.
             </p>
           </div>
           <div className="hero-badge">✓ Ready to send</div>
@@ -135,8 +116,8 @@ export default function Dashboard() {
               <span className="history-count">0</span>
             </div>
             <div className="empty">
-              Campaign history will be available once optional database storage
-              is configured.
+              Campaign history is optional and will appear here when database
+              storage is configured.
             </div>
           </aside>
         </div>
