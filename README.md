@@ -30,7 +30,7 @@ There is **no Google OAuth and no Gmail API** in this version.
 - Vercel-compatible Node.js route handlers
 - `/api/health` endpoint for Brevo connectivity
 
-Brevo's send endpoint is `POST https://api.brevo.com/v3/smtp/email`. Authentication uses the `api-key` header, and attachments can be sent as base64 content. citeturn0search0turn0search1
+Brevo's send endpoint is `POST https://api.brevo.com/v3/smtp/email`. Authentication uses the `api-key` header, and attachments can be sent as base64 content.
 
 ## 1. Create and configure Brevo
 
@@ -41,7 +41,7 @@ Brevo's send endpoint is `POST https://api.brevo.com/v3/smtp/email`. Authenticat
 5. Configure and verify the sender email/domain you want to use.
 6. Use that verified address as `BREVO_SENDER_EMAIL`.
 
-Brevo specifically recommends keeping API keys secret and using them in the `api-key` request header. citeturn0search2
+Brevo specifically recommends keeping API keys secret and using them in the `api-key` request header.
 
 ## 2. Local setup
 
@@ -107,7 +107,7 @@ http://localhost:3000/api/health
 
 A valid configuration should return a successful Brevo connection.
 
-For integration testing without actually delivering mail, Brevo documents a sandbox mode using the `X-Sib-Sandbox: drop` header. MultiApply's normal send path does not enable sandbox mode. citeturn0search13
+For integration testing without actually delivering mail, Brevo documents a sandbox mode using the `X-Sib-Sandbox: drop` header. MultiApply's normal send path does not enable sandbox mode.
 
 ## 5. Send your first email
 
@@ -179,7 +179,7 @@ There is **no Google redirect URI** to configure.
 
 This application does not bypass Brevo, Vercel, or account limits.
 
-Brevo provides a separate batch transactional endpoint for larger API operations, with documented limits including up to 1,000 personalized message versions per request. MultiApply currently uses one request per recipient because this keeps per-recipient status and privacy straightforward. citeturn0search6
+Brevo provides a separate batch transactional endpoint for larger API operations, with documented limits including up to 1,000 personalized message versions per request. MultiApply currently uses one request per recipient because this keeps per-recipient status and privacy straightforward.
 
 For large campaigns, the next architectural upgrade should be a durable queue/background worker rather than a single Vercel request.
 
