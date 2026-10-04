@@ -1,50 +1,90 @@
-import { z } from 'zod';
+type AppConfig = {
+  ADMIN_EMAIL: string;
+  ADMIN_PASSWORD: string;
+  SESSION_SECRET: string;
+  NEXT_PUBLIC_APP_URL: string;
+  BREVO_API_KEY: string;
+  BREVO_SENDER_EMAIL: string;
+  BREVO_SENDER_NAME: string;
+  BREVO_REPLY_TO_EMAIL?: string;
+  BREVO_REPLY_TO_NAME?: string;
+  EMAIL_DELAY_MS: number;
+  MAX_RECIPIENTS_PER_CAMPAIGN: number;
+  MAX_ATTACHMENT_SIZE_MB: number;
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+};
 
-const optionalString = z.preprocess(
-  (value) => (typeof value === 'string' && !value.trim() ? undefined : value),
-  z.string().optional(),
-);
+function required(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`Missing environment variable: ${name}`);
+  return value;
+}
 
-const optionalEmail = z.preprocess(
-  (value) => (typeof value === 'string' && !value.trim() ? undefined : value),
-  z.string().email().optional(),
-);
+function email(name: string): string {
+  const value = required(name);
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value)) {
+    throw new Error(`Invalid email environment variable: ${name}`);
+  }
+  return value;
+}
 
-const authSchema = z.object({
-  ADMIN_EMAIL: z.string().email(),
-  ADMIN_PASSWORD: z.string().min(8),
-  SESSION_SECRET: z.string().min(32),
-});
-
-const emailSchema = z.object({
-  NEXT_PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
-  BREVO_API_KEY: z.string().min(1),
-  BREVO_SENDER_EMAIL: z.string().email(),
-  BREVO_SENDER_NAME: z.string().min(1).default('MultiApply'),
-  BREVO_REPLY_TO_EMAIL: optionalEmail,
-  BREVO_REPLY_TO_NAME: optionalString,
-  EMAIL_DELAY_MS: z.coerce.number().int().min(0).max(10000).default(500),
-  MAX_RECIPIENTS_PER_CAMPAIGN: z.coerce.number().int().min(1).max(200).default(50),
-  MAX_ATTACHMENT_SIZE_MB: z.coerce.number().min(1).max(25).default(10),
-});
-
-const storageSchema = z.object({
-  SUPABASE_URL: optionalString.pipe(z.string().url().optional()),
-  SUPABASE_SERVICE_ROLE_KEY: optionalString,
-});
+function integer(name: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`Invalid environment variable: ${name}`);
+  }
+  return value;
+}
 
 export function authEnv() {
-  return authSchema.parse(process.env);
+  return {
+    ADMIN_EMAIL: email('ADMIN_EMAIL'),
+    ADMIN_PASSWORD: required('ADMIN_PASSWORD'),
+    SESSION_SECRET: required('SESSION_SECRET'),
+  };
 }
 
 export function emailEnv() {
-  return emailSchema.parse(process.env);
+  return {
+    NEXT_PUBLIC_APP_URL:
+      process.env.NEXT_PUBLIC_APP_URL?.trim() || 'http://localhost:3000',
+    BREVO_API_KEY: required('BREVO_API_KEY'),
+    BREVO_SENDER_EMAIL: email('BREVO_SENDER_EMAIL'),
+    BREVO_SENDER_NAME:
+      process.env.BREVO_SENDER_NAME?.trim() || 'MultiApply',
+    BREVO_REPLY_TO_EMAIL: process.env.BREVO_REPLY_TO_EMAIL?.trim() || undefined,
+    BREVO_REPLY_TO_NAME: process.env.BREVO_REPLY_TO_NAME?.trim() || undefined,
+    EMAIL_DELAY_MS: integer('EMAIL_DELAY_MS', 500, 0, 10000),
+    MAX_RECIPIENTS_PER_CAMPAIGN: integer(
+      'MAX_RECIPIENTS_PER_CAMPAIGN',
+      50,
+      1,
+      200,
+    ),
+    MAX_ATTACHMENT_SIZE_MB: integer(
+      'MAX_ATTACHMENT_SIZE_MB',
+      10,
+      1,
+      25,
+    ),
+  };
 }
 
 export function storageEnv() {
-  return storageSchema.parse(process.env);
+  return {
+    SUPABASE_URL: process.env.SUPABASE_URL?.trim() || undefined,
+    SUPABASE_SERVICE_ROLE_KEY:
+      process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || undefined,
+  };
 }
 
-export function env() {
-  return { ...authEnv(), ...emailEnv(), ...storageEnv() };
+export function env(): AppConfig {
+  return {
+    ...authEnv(),
+    ...emailEnv(),
+    ...storageEnv(),
+  };
 }
