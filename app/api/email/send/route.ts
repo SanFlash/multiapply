@@ -108,7 +108,7 @@ async function sendBrevo(
 }
 
 export async function POST(req: Request) {
-  const session = await getSession();
+  const session = getSessionFromRequest(req);
 
   if (!session) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
