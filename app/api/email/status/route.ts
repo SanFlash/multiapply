@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
+import { getSessionFromRequest } from '@/lib/session';
 import { memoryJobs } from '@/lib/state';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
-  if (!(await getSession())) {
+  if (!getSessionFromRequest(req)) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
