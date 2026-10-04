@@ -13,6 +13,8 @@ function required(name: string) {
   return value;
 }
 
+function isEmail(value: string) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value); }
+
 function numberEnv(name: string, fallback: number) {
   const value = Number(process.env[name] || fallback);
   return Number.isFinite(value) ? value : fallback;
@@ -34,6 +36,7 @@ function textToHtml(text: string) {
 }
 
 async function verifyBrevoSender(apiKey: string, senderEmail: string) {
+  if (!isEmail(senderEmail)) throw new Error('BREVO_SENDER_EMAIL must be a real email address, not a sender name.');
   const response = await fetch('https://api.brevo.com/v3/senders?limit=50&offset=0', {
     headers: { accept: 'application/json', 'api-key': apiKey },
     cache: 'no-store',
@@ -73,18 +76,15 @@ async function verifyBrevoSender(apiKey: string, senderEmail: string) {
 }
 
 async function sendBrevo(
+  apiKey: string,
+  senderEmail: string,
+  senderName: string,
   to: string,
   subject: string,
   html: string,
   text: string,
   files: { filename: string; data: Buffer }[],
 ) {
-  const apiKey = required('BREVO_API_KEY');
-  const senderEmail = required('BREVO_SENDER_EMAIL');
-  const senderName = process.env.BREVO_SENDER_NAME?.trim() || 'MultiApply';
-
-  await verifyBrevoSender(apiKey, senderEmail);
-
   const payload: Record<string, unknown> = {
     sender: { name: senderName, email: senderEmail },
     to: [{ email: to }],
@@ -169,6 +169,11 @@ export async function POST(req: Request) {
       Math.max(0, numberEnv('EMAIL_DELAY_MS', 500)),
     );
 
+    const apiKey = required('BREVO_API_KEY');
+    const senderEmail = required('BREVO_SENDER_EMAIL');
+    const senderName = process.env.BREVO_SENDER_NAME?.trim() || 'MultiApply';
+    await verifyBrevoSender(apiKey, senderEmail);
+
     const form = await req.formData();
     const parsed = parseRecipients(String(form.get('recipients') || ''));
     const subject = String(form.get('subject') || '').trim();
@@ -241,6 +246,9 @@ export async function POST(req: Request) {
 
       try {
         const messageId = await sendBrevo(
+          apiKey,
+          senderEmail,
+          senderName,
           recipient,
           subject,
           html || textToHtml(text),
