@@ -1,0 +1,2 @@
+const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export function parseRecipients(input:string){const values=input.split(/[\s,;]+/).map(v=>v.trim().toLowerCase()).filter(Boolean);const unique=[...new Set(values)];return{valid:unique.filter(v=>EMAIL_RE.test(v)),invalid:unique.filter(v=>!EMAIL_RE.test(v))};}
