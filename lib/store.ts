@@ -1,82 +1,56 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+type Campaign = {
+  id: string;
+  senderEmail: string;
+  subject: string;
+  recipients: Array<{
+    email: string;
+    status: 'pending' | 'sent' | 'failed';
+    error?: string;
+    sentAt?: string;
+  }>;
+  status: string;
+  createdAt: string;
+  completedAt?: string;
+};
 
-let client: SupabaseClient | null = null;
-let storageDisabled = false;
-
-function db() {
-  if (storageDisabled) return null;
-
-  const url = process.env.SUPABASE_URL?.trim();
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-
-  // Supabase is optional. Empty/missing values must never break the UI.
-  if (!url || !key) return null;
-
-  try {
-    client ||= createClient(url, key, {
-      auth: { persistSession: false },
-    });
-    return client;
-  } catch {
-    storageDisabled = true;
-    return null;
-  }
-}
+const campaigns = new Map<string, Campaign>();
 
 export async function createCampaign(
   email: string,
   subject: string,
   recipients: string[],
 ) {
-  const d = db();
-  if (!d) return null;
+  const id = crypto.randomUUID();
 
-  try {
-    const { data, error } = await d
-      .from('email_jobs')
-      .insert({
-        sender_email: email,
-        subject,
-        total_recipients: recipients.length,
-        status: 'sending',
-      })
-      .select()
-      .single();
+  campaigns.set(id, {
+    id,
+    senderEmail: email,
+    subject,
+    recipients: recipients.map((recipient) => ({
+      email: recipient,
+      status: 'pending',
+    })),
+    status: 'sending',
+    createdAt: new Date().toISOString(),
+  });
 
-    if (error) throw error;
-
-    await d.from('email_recipients').insert(
-      recipients.map((r) => ({ job_id: data.id, email: r, status: 'pending' })),
-    );
-
-    return data.id as string;
-  } catch {
-    return null;
-  }
+  return id;
 }
 
 export async function updateRecipient(
   jobId: string,
   email: string,
   status: 'sent' | 'failed',
-  errorMessage?: string,
+  error?: string,
 ) {
-  const d = db();
-  if (!d) return;
+  const campaign = campaigns.get(jobId);
+  const recipient = campaign?.recipients.find((item) => item.email === email);
 
-  try {
-    await d
-      .from('email_recipients')
-      .update({
-        status,
-        error_message: errorMessage || null,
-        sent_at: status === 'sent' ? new Date().toISOString() : null,
-      })
-      .eq('job_id', jobId)
-      .eq('email', email);
-  } catch {
-    // Persistence is optional and must never prevent email delivery.
-  }
+  if (!recipient) return;
+
+  recipient.status = status;
+  recipient.error = error;
+  if (status === 'sent') recipient.sentAt = new Date().toISOString();
 }
 
 export async function finishCampaign(
@@ -84,56 +58,20 @@ export async function finishCampaign(
   success: number,
   failed: number,
 ) {
-  const d = db();
-  if (!d) return;
+  const campaign = campaigns.get(jobId);
+  if (!campaign) return;
 
-  try {
-    await d
-      .from('email_jobs')
-      .update({
-        status: failed ? 'completed_with_errors' : 'completed',
-        successful_count: success,
-        failed_count: failed,
-        completed_at: new Date().toISOString(),
-      })
-      .eq('id', jobId);
-  } catch {
-    // Persistence is optional.
-  }
+  campaign.status = failed ? 'completed_with_errors' : 'completed';
+  campaign.completedAt = new Date().toISOString();
 }
 
 export async function history(email: string) {
-  const d = db();
-  if (!d) return [];
-
-  try {
-    const { data } = await d
-      .from('email_jobs')
-      .select(
-        'id,subject,status,total_recipients,successful_count,failed_count,created_at,completed_at',
-      )
-      .eq('sender_email', email)
-      .order('created_at', { ascending: false })
-      .limit(30);
-
-    return data || [];
-  } catch {
-    return [];
-  }
+  return [...campaigns.values()]
+    .filter((campaign) => campaign.senderEmail === email)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 30);
 }
 
 export async function campaign(jobId: string) {
-  const d = db();
-  if (!d) return null;
-
-  try {
-    const { data } = await d
-      .from('email_recipients')
-      .select('email,status,error_message,sent_at')
-      .eq('job_id', jobId);
-
-    return data || [];
-  } catch {
-    return null;
-  }
+  return campaigns.get(jobId)?.recipients || null;
 }
