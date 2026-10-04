@@ -10,7 +10,7 @@ export type Session = {
   authenticated: true;
 };
 
-function secret() {
+function getSecret() {
   return process.env.SESSION_SECRET?.trim() || '';
 }
 
@@ -26,53 +26,55 @@ function decode(value: string) {
   }
 }
 
-function sign(value: string) {
-  return createHmac('sha256', secret()).update(value).digest('base64url');
+function sign(payload: string) {
+  return createHmac('sha256', getSecret()).update(payload).digest('base64url');
 }
 
-function pack(session: Session) {
+function createToken(session: Session) {
   const payload = encode(JSON.stringify(session));
   return payload + '.' + sign(payload);
 }
 
-function unpack(value: string): Session | null {
-  const dot = value.lastIndexOf('.');
-  if (dot <= 0) return null;
+function readToken(token: string): Session | null {
+  const separator = token.lastIndexOf('.');
+  if (separator <= 0 || !getSecret()) return null;
 
-  const payload = value.slice(0, dot);
-  const signature = value.slice(dot + 1);
-
-  if (!secret() || !signature) return null;
-
+  const payload = token.slice(0, separator);
+  const signature = token.slice(separator + 1);
   const expected = sign(payload);
+
   const a = Buffer.from(signature);
   const b = Buffer.from(expected);
 
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
 
-  const parsed = JSON.parse(decode(payload)) as Partial<Session>;
+  try {
+    const parsed = JSON.parse(decode(payload)) as Partial<Session>;
+    if (
+      parsed.authenticated !== true ||
+      typeof parsed.email !== 'string' ||
+      !parsed.email
+    ) {
+      return null;
+    }
 
-  if (
-    parsed.authenticated !== true ||
-    typeof parsed.email !== 'string' ||
-    !parsed.email
-  ) {
+    return {
+      email: parsed.email,
+      name: typeof parsed.name === 'string' ? parsed.name : undefined,
+      authenticated: true,
+    };
+  } catch {
     return null;
   }
-
-  return {
-    email: parsed.email,
-    name: typeof parsed.name === 'string' ? parsed.name : undefined,
-    authenticated: true,
-  };
 }
 
 export async function setSession(session: Session) {
-  if (secret().length < 32) {
+  const secret = getSecret();
+  if (secret.length < 32) {
     throw new Error('SESSION_SECRET must be at least 32 characters');
   }
 
-  (await cookies()).set(COOKIE, pack(session), {
+  (await cookies()).set(COOKIE, createToken(session), {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
@@ -81,11 +83,10 @@ export async function setSession(session: Session) {
   });
 }
 
-export async function getSession(): Promise<Session | null> {
+export async function getSession() {
   try {
-    const value = (await cookies()).get(COOKIE)?.value;
-    if (!value) return null;
-    return unpack(value);
+    const token = (await cookies()).get(COOKIE)?.value;
+    return token ? readToken(token) : null;
   } catch {
     return null;
   }
@@ -94,7 +95,5 @@ export async function getSession(): Promise<Session | null> {
 export async function clearSession() {
   try {
     (await cookies()).delete(COOKIE);
-  } catch {
-    // Ignore cookie cleanup errors.
-  }
+  } catch {}
 }
