@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
-import { clearSession } from '@/lib/session';
+import { SESSION_COOKIE, sessionCookieOptions } from '@/lib/session';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function POST() {
-  try {
-    await clearSession();
-  } catch {
-    // Logout should remain successful even if the cookie is already gone.
-  }
-  return NextResponse.json({ ok: true });
+  const response = NextResponse.json({ ok: true });
+  response.cookies.set(SESSION_COOKIE, '', {
+    ...sessionCookieOptions(),
+    maxAge: 0,
+  });
+  return response;
 }
