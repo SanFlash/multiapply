@@ -4,9 +4,10 @@ import { authEnv } from './config';
 
 const COOKIE = 'multiapply_session';
 
-function key() {
-  return new TextEncoder()
-    .encode(authEnv().SESSION_SECRET.padEnd(32, '0').slice(0, 32));
+function getKey() {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) return null;
+  return new TextEncoder().encode(secret.padEnd(32, '0').slice(0, 32));
 }
 
 export type Session = {
@@ -16,11 +17,16 @@ export type Session = {
 };
 
 export async function setSession(session: Session) {
+  const auth = authEnv();
+  const key = new TextEncoder().encode(
+    auth.SESSION_SECRET.padEnd(32, '0').slice(0, 32),
+  );
+
   const token = await new EncryptJWT(session)
     .setProtectedHeader({ alg: 'dir', enc: 'A256GCM' })
     .setIssuedAt()
     .setExpirationTime('30d')
-    .encrypt(key());
+    .encrypt(key);
 
   (await cookies()).set(COOKIE, token, {
     httpOnly: true,
@@ -33,10 +39,12 @@ export async function setSession(session: Session) {
 
 export async function getSession(): Promise<Session | null> {
   const value = (await cookies()).get(COOKIE)?.value;
-  if (!value) return null;
+  const key = getKey();
+
+  if (!value || !key) return null;
 
   try {
-    return (await jwtDecrypt(value, key())).payload as unknown as Session;
+    return (await jwtDecrypt(value, key)).payload as unknown as Session;
   } catch {
     return null;
   }
