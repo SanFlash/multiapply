@@ -1,1 +1,16 @@
-import {redirect} from 'next/navigation';import {getSession,clearSession} from '@/lib/session';import {history} from '@/lib/store';import Compose from '@/components/Compose';export default async function Dashboard(){const s=await getSession();if(!s)redirect('/');const h=await history(s.email);async function logout(){'use server';await clearSession();redirect('/');}return <main className="shell"><nav className="nav"><div className="brand">Multi<span>Apply</span></div><div className="row"><span className="muted">{s.email}</span><form action={logout}><button className="btn">Log out</button></form></div></nav><div className="container"><div className="hero"><h1>Compose once.<br/>Deliver individually.</h1><p>Every recipient gets a separate message. Attachments are reused safely for each delivery.</p></div><div className="grid"><Compose/><aside className="card"><h2>Recent campaigns</h2>{h.length?<table className="table"><thead><tr><th>Subject</th><th>Sent</th><th>Failed</th></tr></thead><tbody>{h.map((x:any)=><tr key={x.id}><td>{x.subject}</td><td className="success">{x.successful_count||0}</td><td className="error">{x.failed_count||0}</td></tr>)}</tbody></table>:<div className="empty">No campaigns yet.</div>}</aside></div></div></main>}
+import { redirect } from 'next/navigation';
+import { getSession, clearSession } from '@/lib/session';
+import { history } from '@/lib/store';
+import Compose from '@/components/Compose';
+
+export default async function Dashboard() {
+  const s = await getSession();
+  if (!s) redirect('/');
+  const h = await history(s.email);
+  async function logout() { 'use server'; await clearSession(); redirect('/'); }
+  return <main className="shell">
+    <nav className="nav"><div className="brand">Multi<span>Apply</span></div><div className="row"><span className="muted">{s.email}</span><form action={logout}><button className="btn" type="submit">Log out</button></form></div></nav>
+    <div className="container"><div className="hero"><h1>Compose once.<br/>Deliver individually.</h1><p>Brevo sends a separate message to each recipient. Attachments are reused safely for every delivery.</p></div>
+      <div className="grid"><Compose/><aside className="card"><h2>Recent campaigns</h2>{h.length ? <table className="table"><thead><tr><th>Subject</th><th>Sent</th><th>Failed</th></tr></thead><tbody>{h.map((x:any)=><tr key={x.id}><td>{x.subject}</td><td className="success">{x.successful_count||0}</td><td className="error">{x.failed_count||0}</td></tr>)}</tbody></table> : <div className="empty">No campaigns yet.</div>}</aside></div>
+    </div></div></main>;
+}
