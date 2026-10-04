@@ -1,1 +1,24 @@
-import {NextResponse} from 'next/server';import {getSession} from '@/lib/session';import {memoryJobs} from '@/lib/state';import {campaign} from '@/lib/store';export async function GET(req:Request){if(!(await getSession()))return NextResponse.json({error:'Not authenticated'},{status:401});const id=new URL(req.url).searchParams.get('id');if(!id)return NextResponse.json({error:'Missing id'},{status:400});const mem=memoryJobs.get(id);if(mem)return NextResponse.json({jobId:id,...mem});const rows=await campaign(id);return NextResponse.json({jobId:id,status:'completed',results:rows||[]});}
+import { NextResponse } from 'next/server';
+import { getSession } from '@/lib/session';
+import { memoryJobs } from '@/lib/state';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+export async function GET(req: Request) {
+  if (!(await getSession())) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  const id = new URL(req.url).searchParams.get('id');
+  if (!id) {
+    return NextResponse.json({ error: 'Missing id' }, { status: 400 });
+  }
+
+  const job = memoryJobs.get(id);
+  if (!job) {
+    return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
+  }
+
+  return NextResponse.json({ jobId: id, ...job });
+}
