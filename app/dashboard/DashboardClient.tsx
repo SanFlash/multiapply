@@ -55,9 +55,39 @@ export default function Dashboard() {
   const [sending, setSending] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState('');
+  const [resumeReady, setResumeReady] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadDefaultResume() {
+      try {
+        const response = await fetch('/resume/Satyendra_Kumar_Namdeo_Resume.pdf', {
+          cache: 'no-store',
+          credentials: 'same-origin',
+        });
+
+        if (!response.ok) throw new Error('Default resume not found');
+
+        const blob = await response.blob();
+        const resume = new File(
+          [blob],
+          'Satyendra_Kumar_Namdeo_Resume.pdf',
+          { type: 'application/pdf' },
+        );
+
+        if (!cancelled) {
+          setFiles([resume]);
+          setResumeReady(true);
+        }
+      } catch {
+        if (!cancelled) setResumeReady(false);
+      }
+    }
+
+    loadDefaultResume();
+
     const saved = localStorage.getItem('multiapply-recipients');
     if (saved) setRecipients(saved);
 
@@ -256,7 +286,9 @@ export default function Dashboard() {
                   📎 Attach Resume
                 </button>
                 <span className="muted small">
-                  PDF, DOC or DOCX
+                  {resumeReady
+                    ? 'Default project resume loaded automatically.'
+                    : 'PDF, DOC or DOCX'}
                 </span>
               </div>
 
