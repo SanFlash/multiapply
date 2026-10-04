@@ -33,6 +33,45 @@ function textToHtml(text: string) {
     .join('');
 }
 
+async function verifyBrevoSender(apiKey: string, senderEmail: string) {
+  const response = await fetch('https://api.brevo.com/v3/senders?limit=50&offset=0', {
+    headers: { accept: 'application/json', 'api-key': apiKey },
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const data = await response.json();
+      detail = data?.message || data?.code || '';
+      if (Array.isArray(data?.errors) && data.errors.length) {
+        detail = data.errors.map((item: any) => item?.message || item?.code || String(item)).join('; ');
+      }
+    } catch {}
+    throw new Error(`Brevo sender check failed (${response.status})${detail ? `: ${detail}` : ''}`);
+  }
+
+  const data = (await response.json()) as {
+    senders?: Array<{ email?: string; active?: boolean; verified?: boolean }>;
+  };
+
+  const sender = data.senders?.find(
+    (item) => item.email?.toLowerCase() === senderEmail.toLowerCase(),
+  );
+
+  if (!sender) {
+    throw new Error(
+      `Brevo sender "${senderEmail}" is not registered. Add and verify this exact address in Brevo under Senders & IP.`,
+    );
+  }
+
+  if (sender.active === false || sender.verified === false) {
+    throw new Error(
+      `Brevo sender "${senderEmail}" is not verified/active. Verify it in Brevo under Senders & IP.`,
+    );
+  }
+}
+
 async function sendBrevo(
   to: string,
   subject: string,
@@ -43,6 +82,8 @@ async function sendBrevo(
   const apiKey = required('BREVO_API_KEY');
   const senderEmail = required('BREVO_SENDER_EMAIL');
   const senderName = process.env.BREVO_SENDER_NAME?.trim() || 'MultiApply';
+
+  await verifyBrevoSender(apiKey, senderEmail);
 
   const payload: Record<string, unknown> = {
     sender: { name: senderName, email: senderEmail },
