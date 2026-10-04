@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
-import { setSession } from '@/lib/session';
+import {
+  createSessionToken,
+  SESSION_COOKIE,
+  sessionCookieOptions,
+} from '@/lib/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,13 +38,15 @@ export async function POST(req: Request) {
       );
     }
 
-    await setSession({
+    const token = createSessionToken({
       email: adminEmail,
       name: process.env.BREVO_SENDER_NAME?.trim() || 'MultiApply',
       authenticated: true,
     });
 
-    return NextResponse.json({ ok: true });
+    const response = NextResponse.json({ ok: true });
+    response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+    return response;
   } catch (error) {
     console.error('MultiApply login error:', error);
     return NextResponse.json(
