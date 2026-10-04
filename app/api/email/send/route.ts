@@ -2,13 +2,21 @@ import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { getSession } from '@/lib/session';
 import { parseRecipients } from '@/lib/recipients';
-import { sendMail } from '@/lib/brevo';
-import { createCampaign, finishCampaign, updateRecipient } from '@/lib/store';
 import { memoryJobs } from '@/lib/state';
-import { getEmailConfig } from '@/lib/config';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
+
+function required(name: string) {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`Missing ${name}`);
+  return value;
+}
+
+function numberEnv(name: string, fallback: number) {
+  const value = Number(process.env[name] || fallback);
+  return Number.isFinite(value) ? value : fallback;
+}
 
 function textToHtml(text: string) {
   return text
@@ -25,6 +33,80 @@ function textToHtml(text: string) {
     .join('');
 }
 
+async function sendBrevo(
+  to: string,
+  subject: string,
+  html: string,
+  text: string,
+  files: { filename: string; data: Buffer }[],
+) {
+  const apiKey = required('BREVO_API_KEY');
+  const senderEmail = required('BREVO_SENDER_EMAIL');
+  const senderName = process.env.BREVO_SENDER_NAME?.trim() || 'MultiApply';
+
+  const payload: Record<string, unknown> = {
+    sender: { name: senderName, email: senderEmail },
+    to: [{ email: to }],
+    subject,
+    htmlContent: html,
+    textContent: text,
+    tags: ['multiapply'],
+  };
+
+  const replyTo = process.env.BREVO_REPLY_TO_EMAIL?.trim();
+  if (replyTo) {
+    payload.replyTo = {
+      email: replyTo,
+      name: process.env.BREVO_REPLY_TO_NAME?.trim() || undefined,
+    };
+  }
+
+  if (files.length) {
+    payload.attachment = files.map((file) => ({
+      name: file.filename,
+      content: file.data.toString('base64'),
+    }));
+  }
+
+  let lastError = 'Brevo request failed';
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        'api-key': apiKey,
+      },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    });
+
+    if (response.ok) {
+      const data = (await response.json()) as { messageId?: string };
+      return data.messageId || undefined;
+    }
+
+    let detail = '';
+    try {
+      const data = await response.json();
+      detail = data?.message || data?.code || '';
+    } catch {}
+
+    lastError = `Brevo ${response.status}${detail ? `: ${detail}` : ''}`;
+
+    if (response.status !== 429 && response.status < 500) break;
+
+    if (attempt < 2) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, 500 * 2 ** attempt),
+      );
+    }
+  }
+
+  throw new Error(lastError);
+}
+
 export async function POST(req: Request) {
   const session = await getSession();
 
@@ -32,25 +114,25 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  let config: ReturnType<typeof getEmailConfig>;
-
   try {
-    config = getEmailConfig();
-  } catch (error) {
-    console.error('MultiApply email configuration error:', error);
-    return NextResponse.json(
-      { error: 'Email service is not configured correctly.' },
-      { status: 503 },
+    const maxRecipients = Math.min(
+      50,
+      Math.max(1, numberEnv('MAX_RECIPIENTS_PER_CAMPAIGN', 20)),
     );
-  }
+    const maxFileMb = Math.min(
+      25,
+      Math.max(1, numberEnv('MAX_ATTACHMENT_SIZE_MB', 10)),
+    );
+    const delayMs = Math.min(
+      10000,
+      Math.max(0, numberEnv('EMAIL_DELAY_MS', 500)),
+    );
 
-  try {
     const form = await req.formData();
-    const rawRecipients = String(form.get('recipients') || '');
+    const parsed = parseRecipients(String(form.get('recipients') || ''));
     const subject = String(form.get('subject') || '').trim();
     const text = String(form.get('bodyText') || '').trim();
     const html = String(form.get('bodyHtml') || '').trim();
-    const parsed = parseRecipients(rawRecipients);
 
     if (!subject) {
       return NextResponse.json({ error: 'Subject is required' }, { status: 400 });
@@ -67,27 +149,22 @@ export async function POST(req: Request) {
       );
     }
 
-    if (parsed.valid.length > config.MAX_RECIPIENTS_PER_CAMPAIGN) {
+    if (parsed.valid.length > maxRecipients) {
       return NextResponse.json(
-        {
-          error: `Maximum ${config.MAX_RECIPIENTS_PER_CAMPAIGN} recipients per campaign`,
-          invalid: parsed.invalid,
-        },
+        { error: `Maximum ${maxRecipients} recipients per campaign`, invalid: parsed.invalid },
         { status: 400 },
       );
     }
 
-    const files: { filename: string; contentType: string; data: Buffer }[] = [];
+    const files: { filename: string; data: Buffer }[] = [];
     let totalBytes = 0;
 
     for (const value of form.getAll('attachments')) {
       if (!(value instanceof File) || value.size === 0) continue;
 
-      if (value.size > config.MAX_ATTACHMENT_SIZE_MB * 1024 * 1024) {
+      if (value.size > maxFileMb * 1024 * 1024) {
         return NextResponse.json(
-          {
-            error: `Attachment ${value.name} exceeds ${config.MAX_ATTACHMENT_SIZE_MB} MB`,
-          },
+          { error: `Attachment ${value.name} exceeds ${maxFileMb} MB` },
           { status: 400 },
         );
       }
@@ -95,7 +172,6 @@ export async function POST(req: Request) {
       totalBytes += value.size;
       files.push({
         filename: value.name.replace(/[\\\\/]/g, '_').slice(0, 180),
-        contentType: value.type || 'application/octet-stream',
         data: Buffer.from(await value.arrayBuffer()),
       });
     }
@@ -107,13 +183,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const generatedId = randomUUID();
-    const storedId = await createCampaign(
-      session.email,
-      subject,
-      parsed.valid,
-    );
-    const jobId = storedId || generatedId;
+    const jobId = randomUUID();
 
     memoryJobs.set(jobId, {
       total: parsed.valid.length,
@@ -123,69 +193,56 @@ export async function POST(req: Request) {
       results: [],
     });
 
+    const job = memoryJobs.get(jobId)!;
+
     for (let index = 0; index < parsed.valid.length; index += 1) {
-      const to = parsed.valid[index];
+      const recipient = parsed.valid[index];
 
       try {
-        const result = await sendMail({
-          to,
+        const messageId = await sendBrevo(
+          recipient,
           subject,
-          html: html || textToHtml(text),
+          html || textToHtml(text),
           text,
           files,
-        });
-
-        const job = memoryJobs.get(jobId);
-        if (!job) break;
+        );
 
         job.sent += 1;
         job.results.push({
-          email: to,
+          email: recipient,
           status: 'sent',
-          messageId: result.messageId || undefined,
+          messageId,
         });
-
-        await updateRecipient(jobId, to, 'sent');
       } catch (error) {
-        const job = memoryJobs.get(jobId);
-        if (!job) break;
-
-        const message =
-          error instanceof Error ? error.message.slice(0, 300) : 'Email provider error';
-
         job.failed += 1;
-        job.results.push({ email: to, status: 'failed', error: message });
-
-        await updateRecipient(jobId, to, 'failed', message);
+        job.results.push({
+          email: recipient,
+          status: 'failed',
+          error: error instanceof Error ? error.message.slice(0, 300) : 'Brevo error',
+        });
       }
 
-      if (index < parsed.valid.length - 1 && config.EMAIL_DELAY_MS > 0) {
-        await new Promise((resolve) => setTimeout(resolve, config.EMAIL_DELAY_MS));
+      if (index < parsed.valid.length - 1 && delayMs) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }
 
-    const job = memoryJobs.get(jobId);
-    if (job) {
-      job.status = 'completed';
-      await finishCampaign(jobId, job.sent, job.failed);
+    job.status = 'completed';
 
-      return NextResponse.json({
-        jobId,
-        status: job.status,
-        total: job.total,
-        sent: job.sent,
-        failed: job.failed,
-        invalid: parsed.invalid,
-        results: job.results,
-      });
-    }
-
-    return NextResponse.json({ error: 'Campaign state was lost' }, { status: 500 });
+    return NextResponse.json({
+      jobId,
+      status: job.status,
+      total: job.total,
+      sent: job.sent,
+      failed: job.failed,
+      invalid: parsed.invalid,
+      results: job.results,
+    });
   } catch (error) {
-    console.error('MultiApply email send error:', error);
+    console.error('MultiApply email error:', error);
     return NextResponse.json(
-      { error: 'Unable to process the email campaign.' },
-      { status: 500 },
+      { error: error instanceof Error ? error.message : 'Email service failed' },
+      { status: 503 },
     );
   }
 }
