@@ -81,7 +81,21 @@ export function readSessionToken(token: string | undefined | null): Session | nu
   }
 }
 
-export function getSessionFromRequest(request: Request) {\n  const cookieHeader = request.headers.get('cookie') || '';\n  const match = cookieHeader\n    .split(';')\n    .map((part) => part.trim())\n    .find((part) => part.startsWith(SESSION_COOKIE + '='));\n\n  const token = match\n    ? decodeURIComponent(match.slice(SESSION_COOKIE.length + 1))\n    : undefined;\n\n  return readSessionToken(token);\n}\n\nexport function sessionCookieOptions() {
+export function getSessionFromRequest(request: Request) {
+  const cookieHeader = request.headers.get('cookie') || '';
+  const match = cookieHeader
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(SESSION_COOKIE + '='));
+
+  const token = match
+    ? decodeURIComponent(match.slice(SESSION_COOKIE.length + 1))
+    : undefined;
+
+  return readSessionToken(token);
+}
+
+export function sessionCookieOptions() {
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
